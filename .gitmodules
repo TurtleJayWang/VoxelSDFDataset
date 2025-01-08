@@ -1,0 +1,3 @@
+[submodule "thirdparty/cuda_voxelizer"]
+	path = thirdparty/cuda_voxelizer
+	url = https://github.com/Forceflow/cuda_voxelizer.git
