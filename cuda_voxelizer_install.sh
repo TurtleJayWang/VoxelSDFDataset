@@ -2,9 +2,9 @@ cd thirdparty
 # Install Trimesh
 sudo apt update
 sudo apt install mesa-common-dev -y
-sudo apt install libgl1-mesa-dev libglu1-mesa-dev
+sudo apt install libgl1-mesa-dev libglu1-mesa-dev -y
 sudo apt install -y libgl1-mesa-glx
-sudo apt install libxi-dev
+sudo apt install libxi-dev -y
 cd trimesh2; make
 cd ..
 # Install cuda_voxelizer
