@@ -1,0 +1,10 @@
+{
+    "shapenet_categories" : ["02747177"],
+    "shapenet_download_dir" : "Dataset/ShapeNet",
+    "processed_data_dir" : "Dataset/data",
+    "num_augment_data" : 4,
+    "num_sdf_samples" : 250000,
+    "cuda_voxelizer_path" : "thirdparty/cuda_voxelizer/cuda_voxelizer",
+    "input_voxel_grid_size" : 64,
+    "test_validation_ratio" : [0.8, 0.2]
+}
