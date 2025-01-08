@@ -184,7 +184,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     config = {}
-    with open(parser.config, "r") as f:
+    with open(args.config, "r") as f:
         config = json.load(f)
     
     create_dataset(
