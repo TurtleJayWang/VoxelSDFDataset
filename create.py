@@ -97,7 +97,6 @@ def create_dataset(huggingface_token, shapenet_categories, shapenet_download_dir
             os.remove(mesh_file_path + f"_{resolution}.vox")
             return voxel_array
 
-
         if i != 0:
             normalized_mesh.apply_scale(random.random() * 2)
             normalized_mesh.apply_transform(generate_random_rotation_matrix())
