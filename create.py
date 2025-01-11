@@ -6,12 +6,33 @@ import subprocess
 import random
 from tempfile import NamedTemporaryFile
 import logging
-import mesh_to_sdf as mts
+from mesh_to_sdf import *
+from midvoxio.voxio import vox_to_arr, viz_vox
 from voxypy.models import Entity
 import trimesh
 import glob
 
 import numpy as np
+import requests
+from tqdm import tqdm
+import sys
+
+import binvox_rw
+
+def splitall(path):
+    allparts = []
+    while 1:
+        parts = os.path.split(path)
+        if parts[0] == path:  # sentinel for absolute paths
+            allparts.insert(0, parts[0])
+            break
+        elif parts[1] == path: # sentinel for relative paths
+            allparts.insert(0, parts[1])
+            break
+        else:
+            path = parts[0]
+            allparts.insert(0, parts[1])
+    return allparts
 
 def generate_random_rotation_matrix():
     q = np.random.normal(0, 1, 4)
@@ -64,6 +85,13 @@ def normalize_mesh(mesh, unit_sphere=True):
         
     return normalized
 
+def make_directories(path):
+    fullpath = os.getcwd()
+    for folder in os.path.split(path):
+        fullpath = os.path.join(fullpath, folder)
+        if not os.path.exists(fullpath):
+            os.mkdir(fullpath)
+
 def create_dataset(huggingface_token, shapenet_categories, shapenet_download_dir, processed_data_dir,
                    num_augment_data=4,
                    num_sdf_samples=250000, 
@@ -73,28 +101,43 @@ def create_dataset(huggingface_token, shapenet_categories, shapenet_download_dir
     def download_category(category):
         if os.path.exists(os.path.join(shapenet_download_dir, category)):
             return
-        cwd = os.getcwd()
-        os.chdir(shapenet_download_dir)
-        os.system(f'wget --header="Authorization: Bearer ${huggingface_token}" https://huggingface.co/datasets/ShapeNet/ShapeNetCore/resolve/main/{category}.zip')
-        os.system("unzip -o '*.zip'")
-        os.system("rm '*.zip'")
-        os.chdir(cwd)
+        make_directories(shapenet_download_dir)
+
+        url = f"https://huggingface.co/datasets/ShapeNet/ShapeNetCore/resolve/main/{category}.zip"
+        headers = {"Authorization": f"Bearer {huggingface_token}"}
+        response = requests.get(url, headers=headers, stream=True)
+        
+        if response.status_code == 200:
+            logging.info(f"Downloading \"{url}\"...")
+            with open(os.path.join(shapenet_download_dir, f"{category}.zip"), "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            logging.info(f"Done")
+        else:
+            logging.error(f"Failed to download {category}.zip: {response.status_code}")
+        
+        for zip_file in glob.glob(os.path.join(shapenet_download_dir, "*.zip")):
+            logging.info(f"Unzipping {category}...")
+            shutil.unpack_archive(zip_file, extract_dir=shapenet_download_dir)
+            os.remove(zip_file)
+            logging.info("Done")
         
     def process_model(normalized_mesh, i):
         def voxelize_model_cuda_voxelizer(mesh_file_path):
             resolution = input_voxel_grid_size
             
-            assert not os.path.exists(cuda_voxelizer_path), "Failed to find cuda voxelizer"
+            assert os.path.exists(cuda_voxelizer_path), "Failed to find cuda voxelizer"
 
             subprocess.run(
-                [cuda_voxelizer_path, "-f", mesh_file_path, "-s", str(resolution)], 
+                [cuda_voxelizer_path, "-f", mesh_file_path, "-s", str(resolution), "-o", "binvox"], 
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE
             )
 
-            entity = Entity().from_file(mesh_file_path + f"_{resolution}.vox")
-            voxel_array = entity.get_dense()
-            voxel_array = np.pad(voxel_array, pad_width=1, mode="constant", constant_values=0)
-            os.remove(mesh_file_path + f"_{resolution}.vox")
+            voxel_array = np.zeros((resolution, resolution, resolution))
+            with open(mesh_file_path + f"_{resolution}.binvox", "rb") as f:
+                voxel_model = binvox_rw.read_as_3d_array(f)
+                voxel_array = voxel_model.data
+            os.remove(mesh_file_path + f"_{resolution}.binvox")
             return voxel_array
 
         if i != 0:
@@ -104,16 +147,13 @@ def create_dataset(huggingface_token, shapenet_categories, shapenet_download_dir
         tempf = NamedTemporaryFile(suffix=".obj")
         normalized_mesh.export(file_obj=tempf.name)
 
-        logging.info("Sampling SDF...")
-        points, sdfs = mts.sample_sdf_near_surface(normalized_mesh, number_of_points=num_sdf_samples)
-        logging.info("Done")
-
+        print("\tSampling SDF...")
+        points, sdfs = sample_sdf_near_surface(normalized_mesh, number_of_points=num_sdf_samples)
+        
         # Get the voxelized object
-        logging.info("Voxelizing...")
+        print("\tVoxelizing...")
         voxel_array = voxelize_model_cuda_voxelizer(tempf.name)
-        logging.info("Done")
-        logging.info("-" * 50)
-
+        
         tempf.close()
 
         return points, sdfs, voxel_array
@@ -123,24 +163,41 @@ def create_dataset(huggingface_token, shapenet_categories, shapenet_download_dir
         data = []
 
         np_data_folder = os.path.join(processed_data_dir, "np_data")
-        if not os.path.exists(np_data_folder):
-            os.mkdir(np_data_folder)
-
-        for model_file in glob.iglob(os.path.join(category_dir, "**/*.obj"), recursive=True):
+        make_directories(np_data_folder)
+    
+        for i, model_file in enumerate(glob.iglob(os.path.join(category_dir, "**/*.obj"), recursive=True)):
             normalized_model = normalize_mesh(trimesh.load(model_file, force="mesh"))
+            print("-" * 100)
+            print(f"Processing {model_file}, the {i}th model in the category")
             for i in range(num_augment_data):
+                print("-" * 100)
+                print(f"Augment {i} (In total of {num_augment_data})")
+
+                name = lambda type : f"{category}_{splitall(model_file)[-3]}_{i}_{type}"
+
+                if os.path.exists(os.path.join(np_data_folder, name("fulldata") + ".npz")):
+                    fulldata = np.load(os.path.join(np_data_folder, name("fulldata") + ".npz"))
+
+                    if fulldata["voxel_grid"].shape == (64, 64, 64) \
+                        and fulldata["points"].shape == (num_sdf_samples, 3) \
+                        and fulldata["sdfs"].size == num_sdf_samples:
+                        print(f"Processed data exists, skip (In {os.path.join(np_data_folder, name("fulldata") + ".npz")})")
+                        continue
+
                 points, sdfs, voxel_grid = process_model(normalized_model, i)
                 points = np.array(points)
                 sdfs = np.array(sdfs)
-                name = lambda type : f"{category}_{os.path.splitext(os.path.split(model_file)[-1])[0]}_{i}_{type}"
-                np.save(name("points"), points)
-                np.save(name("sdfs"), sdfs)
-                np.save(name("voxel_grid"), voxel_grid)
-                data.append({ 
-                    "points" : name("points") + ".npy", 
-                    "sdfs": name("sdfs") + ".npy", 
-                    "voxel_grid" : name("voxel_grid") + f"_{input_voxel_grid_size}" + ".npy" 
-                })
+
+                print("\tSaving data...")
+                np.savez_compressed(
+                    os.path.join(np_data_folder, name("fulldata")), 
+                    points=points, sdfs=sdfs, voxel_grid=voxel_grid
+                )
+                print(f"\tData has been written to {os.path.join(np_data_folder, name("fulldata"))}.npz")
+
+                data.append(name("fulldata") + ".npz")
+                
+                print("Done", flush=True)
         
         n = len(data)
         split = [list(range(len(data)))]
@@ -173,7 +230,7 @@ def create_dataset(huggingface_token, shapenet_categories, shapenet_download_dir
         category_data = create_and_save_category_data(category)
         dataset_json[category] = category_data
 
-    with open(os.path.join(processed_data_dir, "dataset.json")) as f:
+    with open(os.path.join(processed_data_dir, "dataset.json"), "w") as f:
         json.dump(dataset_json, f)
 
 if __name__ == "__main__":
@@ -186,7 +243,7 @@ if __name__ == "__main__":
     config = {}
     with open(args.config, "r") as f:
         config = json.load(f)
-    
+
     create_dataset(
         args.token, config["shapenet_categories"], config["shapenet_download_dir"], config["processed_data_dir"], 
         config.get("num_augment_data", 1), config.get("num_sdf_samples", 250000), 
