@@ -18,13 +18,13 @@ A Dataset and its utility scripts for Vox2SDF
             "<category_name0>_<model_id0>_<augment_id>_fulldata.npz",
             "<category_name0>_<model_id1>_<augment_id>_fulldata.npz",
             "<category_name0>_<model_id1>_<augment_id>_fulldata.npz",
-            ...
+            "...",
             "<category_name1>_<model_id0>_<augment_id>_fulldata.npz",
-            ...
+            "..."
         ],
         "splits" : [
-            [...], # Training data indicies
-            [...]  # Validation data indicies
+            ["..."],
+            ["..."]
         ]
    } 
 }
