@@ -32,7 +32,7 @@ class VoxelSDFDataset(Dataset):
                 self.models.append(category_models[i])
 
     def __getitem__(self, index):
-        model_index, minor_batch_index = divmod(index, self.config["num_sdf_samples"] // self.num_sdf_samples_per_item)
+        model_index, minor_batch_index = divmod(index, self.config["num_sdf_samples"] // self.num_sdf_samples_per_minor_batch)
         model_npz_filename = self.models[model_index]
         points, sdfs, voxel_grid = self.load_np_files(model_npz_filename)
         minor_batch_begin_index = self.num_sdf_samples_per_minor_batch * minor_batch_index
@@ -40,7 +40,7 @@ class VoxelSDFDataset(Dataset):
         return voxel_grid, points[minor_batch_begin_index, minor_batch_end_index], sdfs[minor_batch_begin_index, minor_batch_end_index]
 
     def __len__(self):
-        return len(self.models) * (self.config["num_sdf_samples"] // self.num_sdf_samples_per_item)
+        return len(self.models) * (self.config["num_sdf_samples"] // self.num_sdf_samples_per_minor_batch)
 
     def load_np_files(self, model_npz_filename) -> tuple: # Returns are torch Tensors
         np_file = os.path.join(self.dataset_dir, "np_data", model_npz_filename)
@@ -50,7 +50,7 @@ class VoxelSDFDataset(Dataset):
         voxel_grid = model_fulldata["voxel_grid"]
         return torch.from_numpy(points), torch.from_numpy(sdfs).unsqueeze(1), torch.from_numpy(voxel_grid).float()
     
-def create_test_validation_data_loader(dataset_dir, batch_size, dataset_config_file, num_sdf_samples_per_item):
-    train_dataset = VoxelSDFDataset(dataset_dir, dataset_config_file, num_sdf_samples_per_item, is_train=True)
-    validation_dataset = VoxelSDFDataset(dataset_dir, dataset_config_file, num_sdf_samples_per_item, is_train=False)
+def create_test_validation_data_loader(dataset_dir, batch_size, dataset_config_file, num_sdf_samples_per_minor_batch):
+    train_dataset = VoxelSDFDataset(dataset_dir, dataset_config_file, num_sdf_samples_per_minor_batch, is_train=True)
+    validation_dataset = VoxelSDFDataset(dataset_dir, dataset_config_file, num_sdf_samples_per_minor_batch, is_train=False)
     return DataLoader(train_dataset, batch_size, shuffle=True), DataLoader(validation_dataset, batch_size, shuffle=False)
