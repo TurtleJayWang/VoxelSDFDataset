@@ -8,10 +8,10 @@ import random
 import numpy as np
 
 class VoxelSDFDataset(Dataset):
-    def __init__(self, dataset_dir, dataset_config_file, num_sdf_samples_per_item, used_categories="All", is_train=True):
+    def __init__(self, dataset_dir, dataset_config_file, num_sdf_samples_per_minor_batch, used_categories="All", is_train=True):
         self.dataset_dir = dataset_dir
         self.is_train = is_train
-        self.num_sdf_samples_per_item = num_sdf_samples_per_item
+        self.num_sdf_samples_per_minor_batch = num_sdf_samples_per_minor_batch
     
         with open(dataset_config_file, "r") as f:
             self.config = json.load(f)
@@ -35,8 +35,8 @@ class VoxelSDFDataset(Dataset):
         model_index, minor_batch_index = divmod(index, self.config["num_sdf_samples"] // self.num_sdf_samples_per_item)
         model_npz_filename = self.models[model_index]
         points, sdfs, voxel_grid = self.load_np_files(model_npz_filename)
-        minor_batch_begin_index = self.num_sdf_samples_per_item * minor_batch_index
-        minor_batch_end_index = (self.num_sdf_samples_per_item + 1) * minor_batch_index
+        minor_batch_begin_index = self.num_sdf_samples_per_minor_batch * minor_batch_index
+        minor_batch_end_index = (self.num_sdf_samples_per_minor_batch + 1) * minor_batch_index
         return voxel_grid, points[minor_batch_begin_index, minor_batch_end_index], sdfs[minor_batch_begin_index, minor_batch_end_index]
 
     def __len__(self):

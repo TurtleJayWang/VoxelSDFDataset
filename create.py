@@ -166,7 +166,7 @@ def create_dataset(huggingface_token, shapenet_categories, shapenet_download_dir
         make_directories(np_data_folder)
     
         for i, model_file in enumerate(glob.iglob(os.path.join(category_dir, "**/*.obj"), recursive=True)):
-            normalized_model = normalize_mesh(trimesh.load(model_file, force="mesh"))
+            normalized_model = 0
             print("-" * 100)
             print(f"Processing {model_file}, the {i}th model in the category")
             for i in range(num_augment_data):
@@ -177,12 +177,15 @@ def create_dataset(huggingface_token, shapenet_categories, shapenet_download_dir
 
                 if os.path.exists(os.path.join(np_data_folder, name("fulldata") + ".npz")):
                     fulldata = np.load(os.path.join(np_data_folder, name("fulldata") + ".npz"))
-
                     if fulldata["voxel_grid"].shape == (64, 64, 64) \
                         and fulldata["points"].shape == (num_sdf_samples, 3) \
                         and fulldata["sdfs"].size == num_sdf_samples:
+                        data.append(name("fulldata") + ".npz")
                         print(f"Processed data exists, skip (In {os.path.join(np_data_folder, name("fulldata") + ".npz")})")
                         continue
+
+                if normalized_model == 0:
+                    normalized_model = normalize_mesh(trimesh.load(model_file, force="mesh"))
 
                 points, sdfs, voxel_grid = process_model(normalized_model, i)
                 points = np.array(points)
@@ -200,13 +203,13 @@ def create_dataset(huggingface_token, shapenet_categories, shapenet_download_dir
                 print("Done", flush=True)
         
         n = len(data)
-        split = [list(range(len(data)))]
-        random.seed(42)
+        split = list(range(n))
+        random.seed(20)
         random.shuffle(split)
         split_ratio = test_validation_ratio[0] / (test_validation_ratio[0] + test_validation_ratio[1])
         split = [
             split[0 : int(split_ratio * n)], 
-            split[int(split_ratio * n) : n]
+            split[int(split_ratio * n):]
         ]
 
         return {
@@ -225,7 +228,6 @@ def create_dataset(huggingface_token, shapenet_categories, shapenet_download_dir
 
     for category in shapenet_categories:
         category_data = dataset_json.get(category, {})
-        if len(category_data): continue
 
         category_data = create_and_save_category_data(category)
         dataset_json[category] = category_data
