@@ -43,7 +43,7 @@ class VoxelSDFDataset(Dataset):
         return len(self.models) * (self.config["num_sdf_samples"] // self.num_sdf_samples_per_minor_batch)
 
     def load_np_files(self, model_npz_filename) -> tuple: # Returns are torch Tensors
-        np_file = os.path.join(self.dataset_dir, "np_data", model_npz_filename)
+        np_file = os.path.join(self.dataset_dir, model_npz_filename)
         model_fulldata = np.load(np_file)
         points = model_fulldata["points"]
         sdfs = model_fulldata["sdfs"]

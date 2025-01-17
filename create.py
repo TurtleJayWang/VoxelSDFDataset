@@ -162,7 +162,7 @@ def create_dataset(huggingface_token, shapenet_categories, shapenet_download_dir
         category_dir = os.path.join(shapenet_download_dir, category)
         data = []
 
-        np_data_folder = os.path.join(processed_data_dir, "np_data")
+        np_data_folder = os.path.join(processed_data_dir)
         make_directories(np_data_folder)
     
         for i, model_file in enumerate(glob.iglob(os.path.join(category_dir, "**/*.obj"), recursive=True)):
