@@ -36,7 +36,7 @@ class VoxelSDFDataset(Dataset):
         model_npz_filename = self.models[model_index]
         points, sdfs, voxel_grid = self.load_np_files(model_npz_filename)
         minor_batch_begin_index = self.num_sdf_samples_per_minor_batch * minor_batch_index
-        minor_batch_end_index = (self.num_sdf_samples_per_minor_batch + 1) * minor_batch_index
+        minor_batch_end_index = self.num_sdf_samples_per_minor_batch * (minor_batch_index + 1)
         return voxel_grid, points[minor_batch_begin_index:minor_batch_end_index], sdfs[minor_batch_begin_index:minor_batch_end_index]
 
     def __len__(self):
